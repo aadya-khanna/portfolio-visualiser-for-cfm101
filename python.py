@@ -49,12 +49,31 @@ def calculate_portfolio_metrics(portfolio_df, prices_df, fx_rates):
     # and adjust the historical data based on known currency assumptions or by assuming yfinance
     # returns prices in the exchange's base currency (which isn't always true, but necessary for a simple app).
 
-    # For the purpose of this solution, we assume all prices fetched for the portfolio tickers
-    # are already in CAD (or on a Canadian exchange, or yfinance provides CAD data). 
-    # A robust solution would require a more complex currency mapping lookup.
-    
-    # Filter prices to only include portfolio tickers
+    # 1. Apply FX Conversion to USD tickers for portfolio calculation
     portfolio_tickers = portfolio_df['Ticker'].tolist()
+    
+    # Assume non-.TO tickers are USD and require conversion using the fetched CADUSD=X rate
+    usd_tickers = [t for t in portfolio_tickers if not t.endswith('.TO')]
+    
+    if fx_rates is not None:
+        fx_series = fx_rates.rename('FX_RATE')
+        
+        # Align prices and FX rates
+        prices = pd.concat([prices_df, fx_series], axis=1).dropna()
+        
+        for ticker in usd_tickers:
+            if ticker in prices.columns:
+                # Convert P_USD to P_CAD: P_CAD = P_USD * FX_RATE (CAD per USD)
+                prices[ticker] = prices[ticker] * prices['FX_RATE']
+
+        # Drop FX rate column before filtering to portfolio tickers
+        prices = prices.drop(columns=['FX_RATE'])
+    else:
+        # If FX rates are missing, use prices_df as is (assuming USD conversion failed or not needed)
+        prices = prices_df.copy()
+
+    # Filter prices to only include portfolio tickers
+    prices = prices[prices.columns.intersection(portfolio_tickers)]
     prices = prices[prices.columns.intersection(portfolio_tickers)]
 
     if prices.empty:
@@ -184,23 +203,6 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def plot_weightings(weighting_df):
-    """Generates a Plotly pie chart for portfolio weightings."""
-    
-    fig = go.Figure(data=[go.Pie(
-        labels=weighting_df['Ticker'], 
-        values=weighting_df['Weight'], 
-        hole=.3
-    )])
-    
-    fig.update_layout(
-        title_text="Portfolio Weightings (%)",
-        annotations=[dict(text=f'#Ticks: {len(weighting_df)}', x=0.5, y=0.5, font_size=15, showarrow=False)]
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-
 # --- Streamlit Main Application ---
 
 uploaded_file = st.file_uploader("Upload CSV file (must contain 'Ticker' and 'Shares' columns)", type="csv")
@@ -291,11 +293,6 @@ if uploaded_file is not None:
                             # 4. Plot Performance
                             # final_data already contains 'Portfolio_Value' and 'Combined_Benchmark_Value' columns
                             plot_performance(final_data['Portfolio_Value'].to_frame(), final_data['Combined_Benchmark_Value'].to_frame('Combined_Benchmark_Value'))
-                            
-                            st.write("---")
-                            
-                            # 5. Plot Weightings
-                            plot_weightings(weighting_df)
                             
                         else:
                             st.warning("Insufficient data to plot performance.")
