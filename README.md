@@ -6,6 +6,6 @@ The goal is stress out CFM101 students even after they've submitted the project 
 
 ## HOW TO USE
 
-- Go to (CFM101PortfolioVisualiser)[https://cfm101pv.streamlit.app/] 
+- Go to https://cfm101pv.streamlit.app/
 - Input csv file in the formate of ticker, shares (final outputted csv)
 - Track returns for our portfolio overtime!
