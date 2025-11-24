@@ -14,7 +14,7 @@ st.set_page_config(layout="wide", page_title="Portfolio Visualizer")
 st.title("💰 Portfolio Visualizer (CAD)")
 st.caption(f"Initial Investment: {INITIAL_INVESTMENT_CAD:,.2f} CAD")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def fetch_historical_data(tickers, start_date):
     """Fetches historical adjusted close prices for a list of tickers."""
     try:
