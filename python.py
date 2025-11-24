@@ -195,7 +195,7 @@ def plot_weightings(weighting_df):
     
     fig.update_layout(
         title_text="Portfolio Weightings (%)",
-        annotations=[dict(text=f'Total Tickers: {len(weighting_df)}', x=0.5, y=0.5, font_size=15, showarrow=False)]
+        annotations=[dict(text=f'#Ticks: {len(weighting_df)}', x=0.5, y=0.5, font_size=15, showarrow=False)]
     )
 
     st.plotly_chart(fig, use_container_width=True)
