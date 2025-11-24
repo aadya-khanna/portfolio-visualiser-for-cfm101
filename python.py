@@ -234,7 +234,7 @@ if uploaded_file is not None:
                 # for daily return calculation today (pct_change needs previous day).
                 
                 # Fetch data for the last 30 days to ensure robust daily return calculation and plotting history
-                start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
                 
                 all_tickers = portfolio_tickers + BENCHMARK_TICKERS + [FX_TICKER]
                 
