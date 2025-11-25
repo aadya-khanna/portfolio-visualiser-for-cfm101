@@ -32,30 +32,15 @@ def calculate_portfolio_metrics(portfolio_df, prices_df, fx_rates):
     if portfolio_df.empty or prices_df.empty:
         return None, None, None
 
-    # Determine which tickers are USD (S&P 500 components, usually) and apply FX conversion
-    # This is a heuristic: we assume all non-TSX indices/non-Canadian stocks are USD unless specified otherwise
-    # Since yfinance doesn't provide easy country identification, we assume TSX tickers are CAD.
-    
     # 1. Prepare Price Data (Align Index and apply FX)
     prices = prices_df.copy()
     
-    # Identify tickers that might be USD (e.g., S&P 500 components). 
-    # Since we can't reliably determine currency from yfinance, 
-    # we'll assume any ticker *not* ending in .TO (TSX convention) is potentially USD, 
-    # but since the prompt specified *all prices are in CAD*, we must fetch CAD equivalent prices 
-    # or rely on yfinance's currency handling.
-    # For simplicity and adhering to the prompt, we will assume non-CAD tickers need conversion.
-    # We will assume all portfolio tickers are CAD for the initial value calculation, 
-    # and adjust the historical data based on known currency assumptions or by assuming yfinance
-    # returns prices in the exchange's base currency (which isn't always true, but necessary for a simple app).
-
-    # 1. Apply FX Conversion to USD tickers for portfolio calculation
     portfolio_tickers = portfolio_df['Ticker'].tolist()
     
     # Assume non-.TO tickers are USD and require conversion using the fetched CADUSD=X rate
     usd_tickers = [t for t in portfolio_tickers if not t.endswith('.TO')]
     
-    if fx_rates is not None:
+    if fx_rates is not None and len(usd_tickers) > 0:
         fx_series = fx_rates.rename('FX_RATE')
         
         # Align prices and FX rates
@@ -63,17 +48,17 @@ def calculate_portfolio_metrics(portfolio_df, prices_df, fx_rates):
         
         for ticker in usd_tickers:
             if ticker in prices.columns:
-                # Convert P_USD to P_CAD: P_CAD = P_USD * FX_RATE (CAD per USD)
-                prices[ticker] = prices[ticker] * prices['FX_RATE']
+                # CRITICAL FIX: CADUSD=X is USD per CAD, so to convert USD to CAD we divide
+                # P_CAD = P_USD / (USD per CAD) = P_USD * (CAD per USD)
+                prices[ticker] = prices[ticker] / prices['FX_RATE']
 
         # Drop FX rate column before filtering to portfolio tickers
         prices = prices.drop(columns=['FX_RATE'])
     else:
-        # If FX rates are missing, use prices_df as is (assuming USD conversion failed or not needed)
+        # If FX rates are missing, use prices_df as is
         prices = prices_df.copy()
 
     # Filter prices to only include portfolio tickers
-    prices = prices[prices.columns.intersection(portfolio_tickers)]
     prices = prices[prices.columns.intersection(portfolio_tickers)]
 
     if prices.empty:
@@ -82,10 +67,6 @@ def calculate_portfolio_metrics(portfolio_df, prices_df, fx_rates):
 
     # Merge prices and holdings data
     holdings = portfolio_df.set_index('Ticker')['Shares']
-    
-    # Calculate Initial Value (Using the first available price point as proxy for initial purchase price)
-    # This is a simplification. The true initial investment is $1,000,000 CAD. 
-    # We must scale the portfolio value to start at this amount based on initial weights.
     
     initial_prices = prices.iloc[0].sort_index()
     
@@ -108,7 +89,6 @@ def calculate_portfolio_metrics(portfolio_df, prices_df, fx_rates):
     portfolio_value = portfolio_value_components.sum(axis=1)
     
     # Apply the scaling factor to the entire portfolio value series
-    # This ensures the starting value is exactly INITIAL_INVESTMENT_CAD
     scaled_portfolio_value = portfolio_value * scaling_factor
     
     # Calculate Daily Returns
@@ -130,25 +110,19 @@ def calculate_benchmark_performance(prices_df, fx_rates):
     benchmark_prices = prices_df[BENCHMARK_TICKERS].copy()
 
     if FX_TICKER in prices_df.columns:
-        # Convert S&P 500 (USD) to CAD by multiplying by CAD/USD rate (which is 1/USD/CAD)
-        # yfinance FX_TICKER returns the price of CADUSD=X, which is USD per CAD. 
-        # So, we need to divide the USD price by this rate, or multiply by the inverse (USD/CAD).
-        # Since yfinance usually quotes X/Y in terms of X per 1 Y, CADUSD=X gives CAD price per 1 USD.
-        # Check if ^GSPC needs conversion. Assume ^GSPC is USD based.
-        
-        # S&P 500 is typically quoted in USD. We need CAD/USD rate.
-        # CADUSD=X gives how many CAD per 1 USD. (e.g., 1.3 CAD per USD)
+        # CADUSD=X gives USD per CAD (e.g., 0.72 USD per 1 CAD)
+        # To convert USD to CAD, we need CAD per USD, which is 1/FX_RATE
+        # Or equivalently: P_CAD = P_USD / FX_RATE
         fx_rates = prices_df[FX_TICKER].rename('FX_RATE')
         
-        # We need to ensure prices and FX rates are aligned
         if not benchmark_prices.empty and not fx_rates.empty:
-            
             # Reindex to the common date range
             combined_data = pd.concat([benchmark_prices, fx_rates], axis=1).dropna()
             
             if '^GSPC' in combined_data.columns:
-                # Convert ^GSPC (USD) to CAD: P_CAD = P_USD * FX_RATE (CAD per USD)
-                combined_data['^GSPC_CAD'] = combined_data['^GSPC'] * combined_data['FX_RATE']
+                # Convert ^GSPC (USD) to CAD by dividing by (USD per CAD) rate
+                combined_data['^GSPC_CAD'] = combined_data['^GSPC'] / combined_data['FX_RATE']
+                
                 benchmark_prices['^GSPC_CAD'] = combined_data['^GSPC_CAD']
                 
                 # Drop original USD price
@@ -165,7 +139,6 @@ def calculate_benchmark_performance(prices_df, fx_rates):
     )
     
     # Calculate cumulative return starting from INITIAL_INVESTMENT_CAD
-    # We apply returns to the initial investment amount
     initial_value = INITIAL_INVESTMENT_CAD
     
     # Cumulative value: (1 + R1) * (1 + R2) * ... * Initial_Value
@@ -189,7 +162,6 @@ def plot_individual_performance(portfolio_df, prices_df, fx_rates):
     fig = go.Figure()
     fig.update_layout(width=1200, height=600)
 
-
     for index, row in portfolio_df.iterrows():
         ticker = row['Ticker']
 
@@ -197,26 +169,28 @@ def plot_individual_performance(portfolio_df, prices_df, fx_rates):
             continue
 
         if ticker in prices_df.columns:
-            price_series = prices_df[ticker]
+            price_series = prices_df[ticker].copy()
 
             # Convert to CAD if necessary
             if not ticker.endswith('.TO') and fx_rates is not None:
                 fx_series = fx_rates.rename('FX_RATE')
-                price_series = price_series * fx_series
+                # CRITICAL FIX: Divide by FX_RATE to convert USD to CAD
+                price_series = price_series / fx_series
             
-            # Calculate individual investment value over time
+            # Calculate individual investment value over time (cumulative return starting at 1.0)
             returns = price_series.pct_change().dropna()
-
             cumulative_return = (1 + returns).cumprod()
             
-            fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return,
-                                     mode='lines', name=f'{ticker} (CAD)'))
+            # Convert to percentage for display
+            cumulative_return_pct = (cumulative_return - 1) * 100
             
+            fig.add_trace(go.Scatter(x=cumulative_return_pct.index, y=cumulative_return_pct,
+                                     mode='lines', name=f'{ticker}'))
     
     fig.update_layout(
-        title='Individual Ticker Performance in Portfolio',
+        title='Individual Ticker Performance (% Return)',
         xaxis_title='Date',
-        yaxis_title='Value (CAD)',
+        yaxis_title='Return (%)',
         hovermode="x unified",
         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
     )
@@ -226,15 +200,10 @@ def plot_individual_performance(portfolio_df, prices_df, fx_rates):
     st.plotly_chart(fig, use_container_width=True)
 
 
-
 def plot_performance(portfolio_value_df, benchmark_value_df):
     """Generates a Plotly line chart comparing portfolio and benchmark performance."""
     
-    # Inputs are expected to be DataFrames with columns 'Portfolio_Value' and 'Combined_Benchmark_Value' respectively.
-    combined_df = pd.concat([portfolio_value_df,
-                             benchmark_value_df],
-                            axis=1).dropna()
-                            
+    combined_df = pd.concat([portfolio_value_df, benchmark_value_df], axis=1).dropna()
     
     fig = go.Figure()
     fig.update_layout(width=1200, height=600)
@@ -246,7 +215,7 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
                              mode='lines', name='Combined Benchmark (CAD)'))
     
     fig.update_layout(
-        title='Portfolio vs. Combined Benchmark Performance (Starting Today)',
+        title='Portfolio vs. Combined Benchmark Performance',
         xaxis_title='Date',
         yaxis_title='Value (CAD)',
         hovermode="x unified",
@@ -260,9 +229,13 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
 
 # --- Streamlit Main Application ---
 
-# slider for number of days to look bac and store the days in a variable
-num_days = st.slider("Number of days to look back for data fetch", min_value=1, max_value=30, value=5, step=1)
-start_date = (datetime.now() - timedelta(days=num_days)).strftime('%Y-%m-%d')
+# slider for number of TRADING days to look back
+num_trading_days = st.slider("Number of trading days to look back", min_value=1, max_value=63, value=30, step=1)
+
+# Convert trading days to calendar days (approximate: trading days * 1.4 to account for weekends/holidays)
+# This ensures we fetch enough data to get the desired number of trading days
+calendar_days_to_fetch = int(num_trading_days * 1.4) + 5  # Add buffer
+start_date = (datetime.now() - timedelta(days=calendar_days_to_fetch)).strftime('%Y-%m-%d')
 
 uploaded_file = st.file_uploader("Upload CSV file (must contain 'Ticker' and 'Shares' columns)", type="csv")
 
@@ -286,15 +259,6 @@ if uploaded_file is not None:
             else:
                 st.success(f"Portfolio loaded with {len(portfolio_tickers)} unique tickers.")
                 
-                # 1. Fetch Data
-                # Get data from the start of the current day. 
-                # Since yfinance provides daily data (Open, Close, etc.), and we need "real-time" 
-                # returns *starting today*, we fetch data from yesterday to ensure we have a starting point 
-                # for daily return calculation today (pct_change needs previous day).
-                
-                # Fetch data for the last 30 days to ensure robust daily return calculation and plotting history
-                
-                
                 all_tickers = portfolio_tickers + BENCHMARK_TICKERS + [FX_TICKER]
                 
                 # Fetch data, caching the result
@@ -304,6 +268,10 @@ if uploaded_file is not None:
                 if all_prices_df.empty:
                     st.error("Could not retrieve sufficient market data. Please check ticker symbols.")
                 else:
+                    # Trim data to only include the requested number of trading days
+                    if len(all_prices_df) > num_trading_days:
+                        all_prices_df = all_prices_df.iloc[-num_trading_days:]
+                    
                     st.write("---")
                     
                     # 2. Benchmark Calculation
@@ -316,22 +284,11 @@ if uploaded_file is not None:
 
                     if portfolio_value is not None and benchmark_value_df is not None:
                         
-                        # Align data to the intersection of dates (especially important for benchmark)
+                        # Align data to the intersection of dates
                         final_data = pd.concat([portfolio_value.rename('Portfolio_Value'),
                                                  benchmark_value_df['Combined_Benchmark_Value']],
                                                 axis=1).dropna()
                         
-                        # Filter data to only include dates from today onwards (based on the latest data point)
-                        # We must show daily returns starting today. If run during market hours, the last entry is today's price.
-                        # We will use the last available date as 'today' and assume the user wants the period leading up to now.
-                        
-                        # If the user means performance starting at the beginning of today, we need to ensure the first data point IS today's starting value.
-                        # For simplicity, we plot the cumulative performance from the earliest available date, 
-                        # but ensure the starting value is 1,000,000 CAD.
-
-                        # The implementation already ensures the cumulative value starts at 1,000,000 CAD by scaling.
-                        
-                        # We only display if we have data points (at least 2 for a change, but since we plot cumulative value, 1 is sufficient)
                         if len(final_data) > 0:
                             
                             # Display Key Metrics
@@ -350,7 +307,6 @@ if uploaded_file is not None:
                             st.write("---")
                             
                             # 4. Plot Performance
-                            # final_data already contains 'Portfolio_Value' and 'Combined_Benchmark_Value' columns
                             plot_performance(final_data['Portfolio_Value'].to_frame(), final_data['Combined_Benchmark_Value'].to_frame('Combined_Benchmark_Value'))
                             
                             plot_individual_performance(portfolio_df, all_prices_df, all_prices_df.get(FX_TICKER))
@@ -360,4 +316,3 @@ if uploaded_file is not None:
                     
     except Exception as e:
         st.error(f"An error occurred while processing the CSV file or market data: {e}")
-
