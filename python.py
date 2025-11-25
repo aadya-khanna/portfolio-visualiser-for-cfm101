@@ -187,6 +187,8 @@ def plot_individual_performance(portfolio_df, prices_df, fx_rates):
     )
     
     fig = go.Figure()
+    fig.update_layout(width=1200, height=600)
+
 
     for index, row in portfolio_df.iterrows():
         ticker = row['Ticker']
@@ -195,7 +197,7 @@ def plot_individual_performance(portfolio_df, prices_df, fx_rates):
             continue
 
         if ticker in prices_df.columns:
-            price_series = prices_df[ticker].dropna()
+            price_series = prices_df[ticker]
 
             # Convert to CAD if necessary
             if not ticker.endswith('.TO') and fx_rates is not None:
@@ -203,7 +205,9 @@ def plot_individual_performance(portfolio_df, prices_df, fx_rates):
                 price_series = price_series * fx_series
             
             # Calculate individual investment value over time
-            cumulative_return = (1 + price_series.pct_change()).cumprod()
+            returns = price_series.pct_change().dropna()
+
+            cumulative_return = (1 + returns).cumprod()
             
             fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return,
                                      mode='lines', name=f'{ticker} (CAD)'))
@@ -233,6 +237,7 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
                             
     
     fig = go.Figure()
+    fig.update_layout(width=1200, height=600)
 
     fig.add_trace(go.Scatter(x=combined_df.index, y=combined_df['Portfolio_Value'],
                              mode='lines', name='Portfolio Value (CAD)'))
