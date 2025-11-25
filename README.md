@@ -8,4 +8,4 @@ The goal is stress out CFM101 students even after they've submitted the project 
 
 - Go to https://cfm101pv.streamlit.app/
 - Input csv file in the formate of ticker, shares (final outputted csv)
-- Track returns for our portfolio overtime!
+- Track returns for your portfolio overtime!
