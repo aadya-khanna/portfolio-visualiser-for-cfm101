@@ -12,7 +12,7 @@ FX_TICKER = "CADUSD=X" # For converting USD benchmark to CAD
 st.set_page_config(layout="wide", page_title="Portfolio Visualizer")
 
 st.title("💰 Portfolio Visualizer (CAD)")
-st.caption(f"Initial Investment: {INITIAL_INVESTMENT_CAD:,.2f} CAD. All prices are in CAD. Note - fetches data for past 5 days; so performance in terms of the competition will be accurate on friday.")
+st.caption(f"Initial Investment: {INITIAL_INVESTMENT_CAD:,.2f} CAD. All prices are in CAD.")
 
 @st.cache_data(ttl=300)
 def fetch_historical_data(tickers, start_date):
