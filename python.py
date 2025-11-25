@@ -205,6 +205,10 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
 
 # --- Streamlit Main Application ---
 
+# add a slider for number of days to look bac and store the days in a variable
+num_days = st.slider("Number of days to look back for data fetch", min_value=1, max_value=30, value=5, step=1)
+start_date = (datetime.now() - timedelta(days=num_days)).strftime('%Y-%m-%d')
+
 uploaded_file = st.file_uploader("Upload CSV file (must contain 'Ticker' and 'Shares' columns)", type="csv")
 
 if uploaded_file is not None:
@@ -234,7 +238,7 @@ if uploaded_file is not None:
                 # for daily return calculation today (pct_change needs previous day).
                 
                 # Fetch data for the last 30 days to ensure robust daily return calculation and plotting history
-                start_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
+                
                 
                 all_tickers = portfolio_tickers + BENCHMARK_TICKERS + [FX_TICKER]
                 
