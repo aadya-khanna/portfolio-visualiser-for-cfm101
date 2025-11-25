@@ -12,7 +12,7 @@ FX_TICKER = "CADUSD=X" # For converting USD benchmark to CAD
 st.set_page_config(layout="wide", page_title="Portfolio Visualizer")
 
 st.title("💰 Portfolio Visualizer (CAD)")
-st.caption(f"Initial Investment: {INITIAL_INVESTMENT_CAD:,.2f} CAD. All prices are in CAD.")
+st.caption(f"Initial Investment: {INITIAL_INVESTMENT_CAD:,.2f} CAD. All prices are in CAD. Note - doesn't account for fees but the result should be close enough for visualization purposes.")
 
 @st.cache_data(ttl=300)
 def fetch_historical_data(tickers, start_date):
@@ -174,6 +174,55 @@ def calculate_benchmark_performance(prices_df, fx_rates):
     return cumulative_benchmark_value.to_frame(name='Combined_Benchmark_Value')
 
 
+def plot_individual_performance(portfolio_df, prices_df, fx_rates):
+    # adds a new plot to show individual performance of each ticker in the portfolio 
+
+    st.write("### Individual Ticker Performance")
+    st.write("Select tickers to display")
+
+    selected_tickers = st.multiselect(
+        "Choose tickers:",
+        options=portfolio_df['Ticker'].unique().tolist(),
+        default=portfolio_df['Ticker'].unique().tolist()
+    )
+    
+    fig = go.Figure()
+
+    for index, row in portfolio_df.iterrows():
+        ticker = row['Ticker']
+
+        if ticker not in selected_tickers:
+            continue
+
+        if ticker in prices_df.columns:
+            price_series = prices_df[ticker].dropna()
+
+            # Convert to CAD if necessary
+            if not ticker.endswith('.TO') and fx_rates is not None:
+                fx_series = fx_rates.rename('FX_RATE')
+                price_series = price_series * fx_series
+            
+            # Calculate individual investment value over time
+            cumulative_return = (1 + price_series.pct_change()).cumprod()
+            
+            fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return,
+                                     mode='lines', name=f'{ticker} (CAD)'))
+            
+    
+    fig.update_layout(
+        title='Individual Ticker Performance in Portfolio',
+        xaxis_title='Date',
+        yaxis_title='Value (CAD)',
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01)
+    )
+
+    fig.update_yaxes(ticksuffix="%")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+
 def plot_performance(portfolio_value_df, benchmark_value_df):
     """Generates a Plotly line chart comparing portfolio and benchmark performance."""
     
@@ -181,6 +230,7 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
     combined_df = pd.concat([portfolio_value_df,
                              benchmark_value_df],
                             axis=1).dropna()
+                            
     
     fig = go.Figure()
 
@@ -205,7 +255,7 @@ def plot_performance(portfolio_value_df, benchmark_value_df):
 
 # --- Streamlit Main Application ---
 
-# add a slider for number of days to look bac and store the days in a variable
+# slider for number of days to look bac and store the days in a variable
 num_days = st.slider("Number of days to look back for data fetch", min_value=1, max_value=30, value=5, step=1)
 start_date = (datetime.now() - timedelta(days=num_days)).strftime('%Y-%m-%d')
 
@@ -243,7 +293,7 @@ if uploaded_file is not None:
                 all_tickers = portfolio_tickers + BENCHMARK_TICKERS + [FX_TICKER]
                 
                 # Fetch data, caching the result
-                with st.spinner(f"Fetching data for {len(all_tickers)} assets..."):
+                with st.spinner(f"Fetching data for all assets..."):
                     all_prices_df = fetch_historical_data(all_tickers, start_date)
                 
                 if all_prices_df.empty:
@@ -298,8 +348,11 @@ if uploaded_file is not None:
                             # final_data already contains 'Portfolio_Value' and 'Combined_Benchmark_Value' columns
                             plot_performance(final_data['Portfolio_Value'].to_frame(), final_data['Combined_Benchmark_Value'].to_frame('Combined_Benchmark_Value'))
                             
+                            plot_individual_performance(portfolio_df, all_prices_df, all_prices_df.get(FX_TICKER))
+
                         else:
                             st.warning("Insufficient data to plot performance.")
                     
     except Exception as e:
         st.error(f"An error occurred while processing the CSV file or market data: {e}")
+
