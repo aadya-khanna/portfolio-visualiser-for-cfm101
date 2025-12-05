@@ -237,22 +237,39 @@ num_trading_days = st.slider("Number of trading days to look back", min_value=1,
 calendar_days_to_fetch = int(num_trading_days * 1.4) + 5  # Add buffer
 start_date = (datetime.now() - timedelta(days=calendar_days_to_fetch)).strftime('%Y-%m-%d')
 
-uploaded_file = st.file_uploader("Upload CSV file (must contain 'Ticker' and 'Shares' columns)", type="csv")
+uploaded_file = st.file_uploader("Upload CSV file (must contain 'Ticker', 'Weight (%)', and 'Shares' columns)", type="csv")
 
 if uploaded_file is not None:
     try:
         portfolio_df = pd.read_csv(uploaded_file)
         
+        # Define required columns
+        TICKER_COL = 'Ticker'
+        SHARES_COL = 'Shares'
+        WEIGHT_COL = 'Weight (%)'
+        REQUIRED_COLS = [TICKER_COL, SHARES_COL, WEIGHT_COL]
+
         # Validation
-        required_columns = ['Ticker', 'Shares']
-        if not all(col in portfolio_df.columns for col in required_columns):
-            st.error(f"The uploaded CSV must contain columns: {required_columns}")
+        if not all(col in portfolio_df.columns for col in REQUIRED_COLS):
+            st.error(f"The uploaded CSV must contain columns: {REQUIRED_COLS}")
+            portfolio_df = pd.DataFrame()
         else:
-            # Clean data: ensure Ticker is string, Shares is numeric
-            portfolio_df['Ticker'] = portfolio_df['Ticker'].astype(str).str.strip().str.upper()
-            portfolio_df['Shares'] = pd.to_numeric(portfolio_df['Shares'], errors='coerce')
-            portfolio_df = portfolio_df.dropna(subset=['Shares'])
-            portfolio_tickers = portfolio_df['Ticker'].unique().tolist()
+            # Clean data:
+            
+            # Ticker: string, uppercase
+            portfolio_df[TICKER_COL] = portfolio_df[TICKER_COL].astype(str).str.strip().str.upper()
+            
+            # Shares: numeric
+            portfolio_df[SHARES_COL] = pd.to_numeric(portfolio_df[SHARES_COL], errors='coerce')
+            
+            # Weight (%): numeric, converted to fraction (used only for display, but validated)
+            portfolio_df[WEIGHT_COL] = pd.to_numeric(portfolio_df[WEIGHT_COL], errors='coerce')
+            portfolio_df[WEIGHT_COL] = portfolio_df[WEIGHT_COL] / 100.0
+            
+            # Drop rows with invalid data in required columns
+            portfolio_df = portfolio_df.dropna(subset=[TICKER_COL, SHARES_COL, WEIGHT_COL])
+            
+            portfolio_tickers = portfolio_df[TICKER_COL].unique().tolist()
 
             if not portfolio_tickers:
                 st.warning("No valid tickers or shares found in the CSV.")
