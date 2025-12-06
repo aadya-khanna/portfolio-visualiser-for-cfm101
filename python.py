@@ -247,7 +247,7 @@ if uploaded_file is not None:
         TICKER_COL = 'Ticker'
         SHARES_COL = 'Shares'
         WEIGHT_COL = 'Weight (%)'
-        REQUIRED_COLS = [TICKER_COL, SHARES_COL, WEIGHT_COL]
+        REQUIRED_COLS = [TICKER_COL, WEIGHT_COL, SHARES_COL]
 
         # Validation
         if not all(col in portfolio_df.columns for col in REQUIRED_COLS):
